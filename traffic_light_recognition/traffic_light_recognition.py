@@ -8,14 +8,13 @@ coco = YOLO('yolov8s.pt')
 oi7 = YOLO('yolov8s-oiv7.pt')
 
 # Open the image
-image = cv2.imread("red_traffic.jpeg.webp")
+image = cv2.imread("traffic_lights.jpg")
 
 # Colors
 red = (0, 0, 255)
 yellow = (0, 255, 255)
 green = (0, 255, 0)
 colors = [red, yellow, green]
-gray = (128, 128, 128)
 
 # Run inference on the image to get boxes
 coco_results = coco.predict(image, conf=0.33, classes=[0,1,2,3,5,7,9,11,12])
@@ -28,15 +27,9 @@ output_image = oi7_results[0].plot()
 
 boxes = coco_results[0].boxes.xyxy.tolist() + oi7_results[0].boxes.xyxy.tolist()
 classifications = coco_results[0].boxes.cls.tolist() + oi7_results[0].boxes.cls.tolist()
-
-def normalize(color):
-    return (color - np.min(color)) / (np.max(color) - np.min(color)) * 255
-
-def distance(color1, color2):
-    return np.linalg.norm(normalize(color1) - normalize(color2))
     
-def argmin(arr):
-    return min(range(len(arr)), key=lambda x : arr[x])
+def argmax(arr):
+    return max(range(len(arr)), key=lambda x : arr[x])
 
 # Determine the color of the traffic lights
 for i in range(len(boxes)):
@@ -46,24 +39,17 @@ for i in range(len(boxes)):
     if classification != 9 and classification != 548: # skip if not traffic light
         continue
     
-    # Select region of interest
+    # Select regions of interest
     x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
-    traffic_light = image[y1:y2,x1:x2]
+    x_padding = (x2 - x1) // 8
+    y_padding = (y2 - y1) // 8
+    offset = (y2 - y1) / 3
+    traffic_lights = [image[y1+y_padding:int(y1-y_padding+offset),x1+x_padding:x2-x_padding], image[int(y1+y_padding+offset):int(y1-y_padding+2*offset),x1+x_padding:x2-x_padding], image[int(y1+y_padding+2*offset):y2-y_padding,x1+x_padding:x2-x_padding]]
     
-    # Flatten
-    width, height, _ = traffic_light.shape
-    flattened_traffic_light = traffic_light.reshape((width * height, 3))
-    
-    # Filter dimmest pixels
-    average_b, average_g, average_r = np.mean(flattened_traffic_light, axis=0)
-    filtered_traffic_light = flattened_traffic_light[(flattened_traffic_light[:,0] > average_b) | (flattened_traffic_light[:,1] > average_g) | (flattened_traffic_light[:,2] > average_r)]
-    average_color = np.mean(filtered_traffic_light, axis=0)
-    
-    # Classify color
-    color_distances = [distance(average_color, colors[0]), distance(average_color, colors[1]), distance(average_color, colors[2])]
-    closest_color = colors[argmin(color_distances)]
+    intensities = [np.average(traffic_light) for traffic_light in traffic_lights]
+    closest_color = colors[argmax(intensities)]
 
     output_image = cv2.rectangle(output_image, (x1,y1), (x2,y2), closest_color, 10)
 
 # Annotate and save the image
-cv2.imwrite("red_traffic_inference.png", output_image)
+cv2.imwrite("traffic_lights_inference.png", output_image)
